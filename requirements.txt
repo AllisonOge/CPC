@@ -9,3 +9,4 @@ torchaudio
 seaborn
 gdown
 soundfile
+timm

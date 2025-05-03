@@ -2,3 +2,4 @@ venv/
 __pycache__/
 datasets
 experiments/
+oct10_outdoor_gain_experiments/
