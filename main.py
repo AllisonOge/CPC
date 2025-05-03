@@ -5,9 +5,7 @@ import torch
 import numpy as np
 from datetime import datetime
 
-# Apex for mixed-precision training
-from apex import amp
-
+from torch.amp import GradScaler, autocast
 
 # TensorBoard
 from torch.utils.tensorboard import SummaryWriter
@@ -17,11 +15,12 @@ from model import load_model, save_model
 from data.loaders import librispeech_loader
 from validation import validate_speakers
 
-#### pass configuration
+# pass configuration
 from experiment import ex
 
 
 def train(args, model, optimizer, writer):
+    scaler = GradScaler(enabled=args.fp16) if args.fp16 else None
 
     # get datasets and dataloaders
     (train_loader, train_dataset, test_loader, test_dataset,) = librispeech_loader(
@@ -45,30 +44,29 @@ def train(args, model, optimizer, writer):
             start_time = time.time()
 
             if step % validation_idx == 0:
-                validate_speakers(args, train_dataset, model, optimizer, epoch, step, global_step, writer)
+                validate_speakers(args, train_dataset, model,
+                                  optimizer, epoch, step, global_step, writer)
 
             audio = audio.to(args.device)
 
-            # forward
-            loss = model(audio)
+            optimizer.zero_grad()
+            with autocast(device_type="cuda", enabled=args.fp16):
+                loss = model(audio)
+                loss = loss.mean()
 
-            # accumulate losses for all GPUs
-            loss = loss.mean()
-
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
-
-            # backward, depending on mixed-precision
-            model.zero_grad()
             if args.fp16:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
             else:
                 loss.backward()
+                optimizer.step()
 
             optimizer.step()
 
             if step % print_idx == 0:
-                examples_per_second = args.batch_size / (time.time() - start_time)
+                examples_per_second = args.batch_size / \
+                    (time.time() - start_time)
                 print(
                     "[Epoch {}/{}] Train step {:04d}/{:04d} \t Examples/s = {:.2f} \t "
                     "Loss = {:.4f} \t Time/step = {:.4f}".format(
@@ -91,7 +89,7 @@ def train(args, model, optimizer, writer):
         ex.log_scalar("loss.train", avg_loss, epoch)
 
         conv = 0
-        for idx, layer in enumerate(model.module.model.modules()):
+        for idx, layer in enumerate(model.model.modules()):
             if isinstance(layer, torch.nn.Conv1d):
                 writer.add_histogram(
                     "Conv/weights-{}".format(conv),
@@ -131,10 +129,10 @@ def main(_run, _log):
     # set start time
     args.time = time.ctime()
 
-    # Device configuration
-    args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
     args.current_epoch = args.start_epoch
+
+    # set device
+    args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # set random seeds
     np.random.seed(args.seed)
@@ -147,7 +145,6 @@ def main(_run, _log):
     tb_dir = os.path.join(out_dir, _run.experiment_info["name"])
     os.makedirs(tb_dir)
     writer = SummaryWriter(log_dir=tb_dir)
-    # writer.add_graph(model.module, torch.rand(args.batch_size, 1, 20480).to(args.device))
 
     try:
         train(args, model, optimizer, writer)

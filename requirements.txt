@@ -1,0 +1,11 @@
+sacred
+torch
+torchvision
+tensorboard
+scikit-learn
+matplotlib
+pyyaml
+torchaudio
+seaborn
+gdown
+soundfile

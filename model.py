@@ -36,31 +36,13 @@ def load_model(args, reload_model=False):
             load_epoch = args.start_epoch
 
         print("### RELOADING MODEL FROM CHECKPOINT {} ###".format(load_epoch))
-        model_fp = os.path.join(args.model_path, "checkpoint_{}.tar".format(load_epoch))
+        model_fp = os.path.join(
+            args.model_path, "checkpoint_{}.tar".format(load_epoch))
         model.load_state_dict(torch.load(model_fp))
 
+    model = model.to(args.device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-
-    if args.fp16:
-        try:
-            from apex import amp
-        except ImportError:
-            raise ImportError(
-                "Install the apex package from https://www.github.com/nvidia/apex to use fp16 for training"
-            )
-
-        print("### USING FP16 ###")
-        model, optimizer = amp.initialize(
-            model, optimizer, opt_level=args.fp16_opt_level
-        )
-
-    args.num_gpu = torch.cuda.device_count()
-    print("Using {} GPUs".format(args.num_gpu))
-
-    model = torch.nn.DataParallel(model)
-    model = model.to(args.device)
-    args.batch_size = args.batch_size * args.num_gpu
     return model, optimizer
 
 
@@ -68,11 +50,10 @@ def save_model(args, model, optimizer, best=False):
     if best:
         out = os.path.join(args.out_dir, "best_checkpoint.tar")
     else:
-        out = os.path.join(args.out_dir, "checkpoint_{}.tar".format(args.current_epoch))
+        out = os.path.join(
+            args.out_dir, "checkpoint_{}.tar".format(args.current_epoch))
 
-    # To save a DataParallel model generically, save the model.module.state_dict().
-    # This way, you have the flexibility to load the model any way you want to any device you want.
-    torch.save(model.module.state_dict(), out)
+    torch.save(model.state_dict(), out)
 
     with open(os.path.join(args.out_dir, "best_checkpoint.txt"), "w") as f:
         f.write(str(args.current_epoch))

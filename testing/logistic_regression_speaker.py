@@ -11,10 +11,10 @@ from data.loaders import librispeech_loader
 from validation import validate_speakers
 from modules.audio.speaker_loss import Speaker_Loss
 
-#### pass configuration
+# pass configuration
 from experiment import ex
 
-## own modules
+# own modules
 from data import loaders
 from model import load_model
 
@@ -33,11 +33,12 @@ def train(args, context_model, loss, train_loader, optimizer, writer):
 
             loss.zero_grad()
 
-            ### get latent representations for current audio
+            # get latent representations for current audio
             model_input = audio.to(args.device)
 
             with torch.no_grad():
-                z, c = context_model.module.model.get_latent_representations(model_input)
+                z, c = context_model.module.model.get_latent_representations(
+                    model_input)
 
             c = c.detach()
 
@@ -77,7 +78,8 @@ def train(args, context_model, loss, train_loader, optimizer, writer):
             total_i += 1
 
         writer.add_scalar("Loss/train_epoch", loss_epoch / total_step, epoch)
-        writer.add_scalar("Accuracy/train_epoch", acc_epoch / total_step, epoch)
+        writer.add_scalar("Accuracy/train_epoch",
+                          acc_epoch / total_step, epoch)
         writer.flush()
 
         # Sacred
@@ -85,7 +87,7 @@ def train(args, context_model, loss, train_loader, optimizer, writer):
         ex.log_scalar("train.accuracy", acc_epoch / total_step)
 
 
-def test(opt, context_model, loss, data_loader):
+def test(args, context_model, loss, data_loader):
     loss.eval()
 
     accuracy = 0
@@ -96,11 +98,12 @@ def test(opt, context_model, loss, data_loader):
 
             loss.zero_grad()
 
-            ### get latent representations for current audio
+            # get latent representations for current audio
             model_input = audio.to(args.device)
 
             with torch.no_grad():
-                z = context_model.module.forward_through_n_layers(model_input, 5)
+                z = context_model.module.forward_through_n_layers(
+                    model_input, 5)
 
             z = z.detach()
 
@@ -115,7 +118,8 @@ def test(opt, context_model, loss, data_loader):
             if i % 10 == 0:
                 print(
                     "Step [{}/{}], Loss: {:.4f}, Accuracy: {:.4f}".format(
-                        i, len(data_loader), loss_epoch / (i + 1), accuracy / (i + 1)
+                        i, len(data_loader), loss_epoch /
+                        (i + 1), accuracy / (i + 1)
                     )
                 )
 
@@ -124,6 +128,7 @@ def test(opt, context_model, loss, data_loader):
     print("Final Testing Accuracy: ", accuracy)
     print("Final Testing Loss: ", loss_epoch)
     return loss_epoch, accuracy
+
 
 @ex.automain
 def main(_run, _log):
@@ -138,12 +143,13 @@ def main(_run, _log):
         out_dir = _run.observers[0].dir
 
     args.out_dir = out_dir
-    
+
     # set start time
     args.time = time.ctime()
-    
+
     # Device configuration
-    args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    args.device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu")
 
     args.current_epoch = args.start_epoch
 
@@ -152,7 +158,7 @@ def main(_run, _log):
     torch.cuda.manual_seed(args.seed)
     np.random.seed(args.seed)
 
-    ## load model
+    # load model
     context_model, optimizer = load_model(
         args, reload_model=True
     )
@@ -168,7 +174,7 @@ def main(_run, _log):
     train_loader, _, test_loader, _ = loaders.librispeech_loader(args)
 
     accuracy = 0
-    
+
     # initialize TensorBoard
     tb_dir = os.path.join(out_dir, _run.experiment_info["name"])
     os.makedirs(tb_dir)

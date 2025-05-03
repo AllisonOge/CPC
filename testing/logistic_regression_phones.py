@@ -4,6 +4,7 @@ import torch
 import time
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 # TensorBoard
 from torch.utils.tensorboard import SummaryWriter
@@ -12,7 +13,7 @@ from model import load_model, save_model
 from data.loaders import librispeech_loader
 from validation import validate_speakers
 
-#### pass configuration
+# pass configuration
 from experiment import ex
 
 
@@ -40,16 +41,15 @@ def train(
 
             audio, filename = train_dataset.get_full_size_test_item(i)
 
-            ### get latent representations for current audio
+            # get latent representations for current audio
             model_input = audio.to(args.device)
             model_input = torch.unsqueeze(model_input, 0)
-
 
             targets = torch.LongTensor(phone_dict[filename])
             targets = targets.to(args.device).reshape(-1)
 
             with torch.no_grad():
-                z, context = context_model.module.model.get_latent_representations(
+                z, context = context_model.model.get_latent_representations(
                     model_input
                 )
 
@@ -64,7 +64,7 @@ def train(
             so we cut our predictions to the right length.
             Cutting from the front gave better results empirically.
             """
-            output = output[-targets.size(0) :]  # output[ :targets.size(0)]
+            output = output[-targets.size(0):]  # output[ :targets.size(0)]
 
             loss = criterion(output, targets)
 
@@ -104,11 +104,14 @@ def train(
             total_i += 1
 
         figure = plt.figure()
-        plt.bar(range(predicted_classes.size(0)), predicted_classes.cpu().numpy())
-        writer.add_figure("Class_distribution/global_step", figure, global_step=total_i)
+        plt.bar(range(predicted_classes.size(0)),
+                predicted_classes.cpu().numpy())
+        writer.add_figure("Class_distribution/global_step",
+                          figure, global_step=total_i)
 
         writer.add_scalar("Loss/train_epoch", loss_epoch / total_step, epoch)
-        writer.add_scalar("Accuracy/train_epoch", acc_epoch / total_step, epoch)
+        writer.add_scalar("Accuracy/train_epoch",
+                          acc_epoch / total_step, epoch)
         writer.flush()
 
         # Sacred
@@ -133,14 +136,14 @@ def test(args, test_dataset, phone_dict, context_model, model, optimizer, n_feat
 
             model.zero_grad()
 
-            ### get latent representations for current audio
+            # get latent representations for current audio
             model_input = audio.to(args.device)
             model_input = torch.unsqueeze(model_input, 0)
 
             targets = torch.LongTensor(phone_dict[filename])
 
             with torch.no_grad():
-                z, context = context_model.module.model.get_latent_representations(
+                z, context = context_model.model.get_latent_representations(
                     model_input
                 )
 
@@ -152,7 +155,7 @@ def test(args, test_dataset, phone_dict, context_model, model, optimizer, n_feat
                 # forward pass
                 output = model(inputs)
 
-            output = output[-targets.size(0) :]
+            output = output[-targets.size(0):]
 
             # calculate accuracy
             _, predicted = torch.max(output.data, 1)
@@ -188,7 +191,8 @@ def main(_run, _log):
     args.time = time.ctime()
 
     # Device configuration
-    args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    args.device = torch.device(
+        "cuda:0" if torch.cuda.is_available() else "cpu")
 
     args.current_epoch = args.start_epoch
 
@@ -204,10 +208,11 @@ def main(_run, _log):
 
     # 41 different phones to differentiate
     n_classes = 41
-    n_features = context_model.module.gar_hidden
+    n_features = context_model.gar_hidden
 
     # create linear classifier
-    model = torch.nn.Sequential(torch.nn.Linear(n_features, n_classes)).to(args.device)
+    model = torch.nn.Sequential(torch.nn.Linear(
+        n_features, n_classes)).to(args.device)
     model.apply(weights_init)
 
     params = model.parameters()

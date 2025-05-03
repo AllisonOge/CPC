@@ -36,9 +36,9 @@ class InfoNCE(nn.Module):
             negative samples can still come from any point of the input sequence (full_z)
             """
             if c.size(1) > self.subsample_win:
-                seq_begin = np.random.randint(0, c.size(1) - self.subsample_win)
-                c = c[:, seq_begin : seq_begin + self.subsample_win, :]
-                z = z[:, seq_begin : seq_begin + self.subsample_win, :]
+                seq_begin = torch.randint(0, c.size(1) - self.subsample_win)
+                c = c[:, seq_begin: seq_begin + self.subsample_win, :]
+                z = z[:, seq_begin: seq_begin + self.subsample_win, :]
 
         Wc = self.predictor(c)
         return self.infonce_loss(Wc, z, full_z)
@@ -85,7 +85,8 @@ class InfoNCE(nn.Module):
         z = self.broadcast_batch_length(z)
         z_neg = torch.stack(
             [
-                torch.index_select(z, 0, torch.randperm(z.size(0)).to(z.get_device()))
+                torch.index_select(z, 0, torch.randperm(
+                    z.size(0)).to(z.get_device()))
                 for i in range(self.negative_samples)
             ],
             2,
@@ -112,7 +113,7 @@ class InfoNCE(nn.Module):
             and from z_(t+1) to z_(t+k) are the same)                
         """
 
-        z_k_neg = z_neg[z_neg.size(0) - Wc_k.size(0) :, :, :]
+        z_k_neg = z_neg[z_neg.size(0) - Wc_k.size(0):, :, :]
 
         f_k = torch.squeeze(torch.matmul(Wc_k, z_k_neg), 1)
 
@@ -144,7 +145,7 @@ class InfoNCE(nn.Module):
 
         for k in range(1, self.args.prediction_step + 1):
             z_k = z[:, k:, :]
-            Wc_k = Wc[:, :-k, (k - 1) * self.genc_hidden : k * self.genc_hidden]
+            Wc_k = Wc[:, :-k, (k - 1) * self.genc_hidden: k * self.genc_hidden]
 
             z_k = self.broadcast_batch_length(z_k)
             Wc_k = self.broadcast_batch_length(Wc_k)
@@ -165,7 +166,8 @@ class InfoNCE(nn.Module):
             if self.args.calc_accuracy:
                 predicted = torch.argmax(results, 1)
                 correct = (
-                    (predicted == true_labels[: (seq_len - k) * self.args.batch_size])
+                    (predicted == true_labels[: (
+                        seq_len - k) * self.args.batch_size])
                     .sum()
                     .item()
                 )
@@ -175,4 +177,3 @@ class InfoNCE(nn.Module):
         accuracies = torch.mean(accuracies)
 
         return total_loss, accuracies
-

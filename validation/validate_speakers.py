@@ -31,8 +31,7 @@ def validate_speakers(args, dataset, model, optimizer, epoch, step, global_step,
 
     model.eval()
     with torch.no_grad():
-        # DataParallel wraps model in module
-        model = model.module.model
+        model = model.model
         latent_rep_size, latent_rep_len = model.get_latent_size(input_size)
         features = torch.zeros(
             max_speakers, batch_size, latent_rep_size * latent_rep_len
@@ -43,7 +42,8 @@ def validate_speakers(args, dataset, model, optimizer, epoch, step, global_step,
             if idx == 10:
                 break
 
-            model_in = dataset.get_audio_by_speaker(speaker_idx, batch_size=batch_size)
+            model_in = dataset.get_audio_by_speaker(
+                speaker_idx, batch_size=batch_size)
             model_in = model_in.to(args.device)
             z, c = model.get_latent_representations(model_in)
 
@@ -65,7 +65,9 @@ def validate_speakers(args, dataset, model, optimizer, epoch, step, global_step,
     writer.flush()
 
     out_dir = os.path.join(args.out_dir, "tsne")
-    torch.save(features, os.path.join(out_dir, "features-{}-{}.pt".format(epoch, step)))
-    torch.save(labels, os.path.join(out_dir, "labels-{}-{}.pt".format(epoch, step)))
+    torch.save(features, os.path.join(
+        out_dir, "features-{}-{}.pt".format(epoch, step)))
+    torch.save(labels, os.path.join(
+        out_dir, "labels-{}-{}.pt".format(epoch, step)))
 
     model.train()
