@@ -10,3 +10,4 @@ seaborn
 gdown
 soundfile
 timm
+optuna
