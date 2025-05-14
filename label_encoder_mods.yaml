@@ -1,0 +1,9 @@
+classes:
+- bpsk
+- cw
+- pam4
+- qam
+- qam64
+- qpsk
+- sine
+nclasses: 7

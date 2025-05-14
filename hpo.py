@@ -4,7 +4,6 @@ import timm
 import torch.nn.functional as F
 from torchvision.datasets import DatasetFolder
 import numpy as np
-from sklearn.metrics import silhouette_score
 from torch.utils.data import DataLoader
 from torch.amp import GradScaler
 from tqdm import tqdm
@@ -20,7 +19,7 @@ class CPC(nn.Module):
                  in_features: int,
                  hidden_features: int,
                  slice_length: int = 1024,
-                 history_steps: int = 8,
+                 history_steps: int = 12,
                  drop_rate: float = 0.2,
                  drop_path_rate: float = 0.7):
         super(CPC, self).__init__()
@@ -62,25 +61,31 @@ class CPC(nn.Module):
         h0 = torch.zeros(1, x.size(0), x.size(-1)
                          ).to(x.device)  # (num_layers, B, D)
 
-        c, h0 = self.autoregressor(x[:, :self.history_steps])  # (B, history_steps, D) # noqa
+        ct = torch.zeros(B, self.history_steps, x.size(-1)).to(x.device)
+        preds = torch.zeros(B, self.history_steps, x.size(-1)).to(x.device)
+        for t in range(1, self.history_steps + 1):
+            out, h0 = self.autoregressor(x[:, :t], h0)
+            ct[:, t-1, :] = out[:, -1, :]
+            preds[:, t-1, :] = x[:, t, :]
 
-        return c[:, -1], x[:, self.history_steps:], h0
+        return ct, preds, h0
 
 
 def nt_xent_loss(c_t, z_fut, temperature=1.0):
-    # c_t is of shape (B, D) and z_fut is of shape (B, K, D)
+    # c_t and z_fut is of shape (B, K, D)
     # normalize the vectors
     c_t = F.normalize(c_t, p=2, dim=-1)
     z_fut = F.normalize(z_fut, p=2, dim=-1)
 
+    B, K, _ = z_fut.size()
     # compute the cosine similarity
-    logits = torch.einsum("bd, bkd -> bk", c_t, z_fut) / temperature  # (B, K)
-
-    true_labels = torch.zeros(logits.size(
-        0), device=logits.device).long()  # (B,)
+    logits = torch.einsum("bjd, bkd -> bjk", c_t, z_fut) / \
+        temperature  # (B, K, K)
+    # positives are the diagonal pairs j == k
+    true_labels = torch.arange(K).repeat(B).to(c_t.device)  # (B*K,)
 
     # compute the loss
-    return F.cross_entropy(logits, true_labels)
+    return F.cross_entropy(logits.view(B*K, K), true_labels)
 
 
 class R22_Dataset(DatasetFolder):
@@ -118,9 +123,19 @@ def get_dataloader(batch_size=4, num_workers=4):
             data = np.load(f)
             _ = np.load(f, allow_pickle=True).item()
         data = np.stack((data.real, data.imag), axis=1)
-        # normalize the data
-        data = (data - np.mean(data, axis=(1, 2), keepdims=True)) / \
-            (np.std(data, axis=(1, 2), keepdims=True) + 1e-8)
+        # drop the first 1024 samples
+        data = data[:, :, 1024:]
+        # drop the last 1024 samples
+        data = data[:, :, :-1024]
+        # CPC uses a portion of the entire sequence in the loss
+        # assuming a autoregressive model consumes 40 steps of 4096 samples
+        # then the maximum length of the sequence is 40 * 4096 = 163840
+        # randomly sample a portion of the sequence of length 163840
+        idx = np.random.randint(0, data.shape[-1] - 163840)
+        data = data[:, :,  idx:idx + 163840]
+        # # normalize the data
+        # data = (data - np.mean(data, axis=(1, 2), keepdims=True)) / \
+        #     (np.std(data, axis=(1, 2), keepdims=True) + 1e-8)
         return data.astype(np.float32)
 
     dataset = R22_Dataset(
